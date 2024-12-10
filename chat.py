@@ -1,87 +1,57 @@
-from telethon import TelegramClient, events
+mport asyncio
 import openai
-import asyncio
-import random
+from pyrogram import Client, filters
+from pyrogram.types import Message
 
-# OpenAI API key
+# OpenAI API Key
 openai.api_key = "YOUR_OPENAI_API_KEY"
 
-# Ask for Telegram API credentials
-API_ID = int(input("Enter your Telegram API ID: "))
-API_HASH = input("Enter your Telegram API HASH: ")
-PHONE_NUMBER = input("Enter your phone number with country code: ")  # E.g., +123456789
+# Pyrogram Userbot Client
+app = Client(
+    "humanlike_bot",
+    api_id=12799559,  # Replace with your API ID
+    api_hash="077254e69d93d08357f25bb5f4504580",  # Replace with your API Hash
+)
 
-# Group details
-GROUP_ID = input("Enter the Group ID or username: ")
-
-# Chat history for contextual replies
-chat_history = []
-
-# Initialize the Telegram client
-client = TelegramClient("dynamic_session", API_ID, API_HASH)
-
-async def generate_response(prompt):
-    """
-    Generate a response using OpenAI GPT.
-    """
+def generate_response(prompt):
+    """Generate a human-like response using OpenAI's GPT model."""
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=prompt,
-            max_tokens=100,
-            temperature=0.9,
+            model="gpt-3.5-turbo",  # Use "gpt-4" if available
+            messages=[
+                {"role": "system", "content": "You are a friendly and conversational chatbot."},
+                {"role": "user", "content": prompt},
+            ],
         )
-        return response['choices'][0]['message']['content'].strip()
+        return response["choices"][0]["message"]["content"]
     except Exception as e:
-        print(f"Error generating response: {e}")
-        return "Sorry, I can't think of anything to say right now."
+        return "I'm having trouble thinking right now. Can we try later?"
 
-@client.on(events.NewMessage(chats=GROUP_ID))
-async def handle_new_message(event):
-    global chat_history
+async def human_typing(simulated_delay: float, chat_id: int):
+    """Simulate human typing action."""
+    await app.send_chat_action(chat_id, "typing")
+    await asyncio.sleep(simulated_delay)
+    await app.send_chat_action(chat_id, "cancel")
 
-    # Only respond if the bot is tagged or the message is a reply
-    if event.is_reply or f"@{(await client.get_me()).username}" in event.text:
-        original_message = ""
-        
-        # If it's a reply, get the replied-to message's text
-        if event.is_reply:
-            reply_msg = await event.get_reply_message()
-            original_message = reply_msg.text if reply_msg else ""
-        
-        # Add the original and new messages to the chat history
-        if original_message:
-            chat_history.append({"role": "user", "content": original_message})
-        chat_history.append({"role": "user", "content": event.text})
-
-        # Keep chat history limited for efficiency
-        if len(chat_history) > 10:
-            chat_history = chat_history[-10:]
-
-        # Delay before responding
-        await asyncio.sleep(random.randint(5, 15))
-
-        # Generate a response using OpenAI GPT
-        response = await generate_response(chat_history)
-
-        # Add the bot's response to the chat history
-        chat_history.append({"role": "assistant", "content": response})
-
-        # Send the response to the group
-        await event.reply(response)
-
-async def main():
-    # Authenticate the client
-    await client.start(phone=PHONE_NUMBER)
-    
-    # Join the group if not already a member
+@app.on_message(filters.mentioned & ~filters.bot & ~filters.service)
+async def respond_to_mention(client: Client, message: Message):
+    """Reply to mentions in a human-like manner."""
     try:
-        await client.get_entity(GROUP_ID)  # Validate group
-        print(f"Bot is running and monitoring messages in {GROUP_ID}...")
-        await client.run_until_disconnected()
-    except Exception as e:
-        print(f"Error accessing group: {e}")
+        user_message = message.text
+        chat_id = message.chat.id
 
-# Run the client
-with client:
-    client.loop.run_until_complete(main())
+        # Simulate human delay
+        delay = len(user_message) * 0.05  # Approximate human typing delay
+        await human_typing(delay, chat_id)
+
+        # Generate response using GPT
+        reply = generate_response(user_message)
+
+        # Reply to the message
+        await message.reply_text(reply, quote=True)
+    except Exception as e:
+        await message.reply_text("Oops, something went wrong.", quote=True)
+
+if __name__ == "__main__":
+    print("Userbot is running...")
+    app.run()
